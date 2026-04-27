@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+import html
+
 
 def _lights(kind: str, current: int, total: int) -> str:
+    current = max(0, min(int(current or 0), total))
     return "".join(f"<span class='light {'on ' + kind if i < current else ''}'></span>" for i in range(total))
+
+
+def _e(value) -> str:
+    """Escape a string field that may come from the MLB live feed before injection into HTML."""
+    return html.escape(str(value)) if value not in (None, "") else "-"
 
 
 def render_scorebug_html(state: dict) -> str:
@@ -12,8 +20,10 @@ def render_scorebug_html(state: dict) -> str:
     runners = []
     for label in ["first", "second", "third"]:
         if state.get(label):
-            runners.append(f"{label.title()}: {state[label]}")
+            runners.append(f"{html.escape(label.title())}: {html.escape(str(state[label]))}")
     runner_text = "<br>".join(runners) if runners else "Bases empty"
+    half = html.escape(str(state.get("half") or ""))
+    inning = html.escape(str(state.get("inning") or ""))
     return f"""
     <div class="scorebug">
       <div class="scorebug-title">Live Scoreboard</div>
@@ -23,10 +33,10 @@ def render_scorebug_html(state: dict) -> str:
           <div class="count-row"><span>Strikes</span><div class="lights">{_lights('strikes', state.get('strikes', 0), 3)}</div></div>
           <div class="count-row"><span>Outs</span><div class="lights">{_lights('outs', state.get('outs', 0), 3)}</div></div>
           <div class="lineup-small">
-            <strong>{state.get('half', '')} {state.get('inning', '')}</strong><br>
-            Batter: {state.get('batter') or '-'}<br>
-            Pitcher: {state.get('pitcher') or '-'}<br>
-            On deck: {state.get('on_deck') or '-'}<br>
+            <strong>{half} {inning}</strong><br>
+            Batter: {_e(state.get('batter'))}<br>
+            Pitcher: {_e(state.get('pitcher'))}<br>
+            On deck: {_e(state.get('on_deck'))}<br>
             {runner_text}
           </div>
         </div>

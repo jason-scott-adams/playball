@@ -1,9 +1,10 @@
 [theme]
-base = "light"
-primaryColor = "#004687"
-backgroundColor = "#F4F7FB"
-secondaryBackgroundColor = "#FFFFFF"
-textColor = "#172033"
+# Royals night mode: deep navy / slate field, Royals blue + gold accents.
+base = "dark"
+primaryColor = "#7AB2DD"
+backgroundColor = "#0B1220"
+secondaryBackgroundColor = "#11192A"
+textColor = "#E5ECF7"
 font = "sans serif"
 
 [browser]

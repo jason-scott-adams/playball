@@ -10,6 +10,7 @@ import streamlit as st
 
 
 SAVANT_CSV_URL = "https://baseballsavant.mlb.com/statcast_search/csv"
+USER_AGENT = "playball/0.2 (+https://github.com/jason-scott-adams/playball)"
 
 
 def _season_start() -> str:
@@ -78,7 +79,7 @@ def _read_savant_csv(params: Dict[str, str]) -> pd.DataFrame:
 
 
 def _read_savant_csv_raw(params: Dict[str, str]) -> pd.DataFrame:
-    response = requests.get(SAVANT_CSV_URL, params=params, timeout=30)
+    response = requests.get(SAVANT_CSV_URL, params=params, timeout=30, headers={"User-Agent": USER_AGENT})
     response.raise_for_status()
     text = response.text.lstrip("\ufeff")
     return pd.read_csv(StringIO(text))

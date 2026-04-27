@@ -1,10 +1,36 @@
 from __future__ import annotations
 
+import contextlib
+import os
 from datetime import date
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import pandas as pd
+
+try:
+    import fcntl  # POSIX only; macOS/Linux supported
+except ImportError:  # pragma: no cover - Windows path
+    fcntl = None  # type: ignore[assignment]
+
+
+@contextlib.contextmanager
+def _locked_write(path: Path):
+    """Best-effort exclusive lock on POSIX so multi-tab writes don't clobber each other."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_suffix(path.suffix + ".lock")
+    if fcntl is None:
+        yield
+        return
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
 
 
 WATCHLIST_PATH = Path(__file__).resolve().parents[2] / "data" / "watchlist.csv"
@@ -143,13 +169,13 @@ def load_watchlist() -> pd.DataFrame:
 
 
 def save_watchlist(frame: pd.DataFrame) -> None:
-    WATCHLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
     clean = frame.copy().fillna("")
     for col in WATCHLIST_COLUMNS:
         if col not in clean.columns:
             clean[col] = ""
     clean = clean[WATCHLIST_COLUMNS].drop_duplicates(subset=["name"], keep="last")
-    clean.to_csv(WATCHLIST_PATH, index=False)
+    with _locked_write(WATCHLIST_PATH):
+        clean.to_csv(WATCHLIST_PATH, index=False)
 
 
 def add_watch_player(name: str, player_id: Optional[str], role: str, org: str, tags: str, why: str, notes: str = "") -> None:

@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import html
+
 import pandas as pd
 import streamlit as st
 
+from playball.data.advanced import (
+    fetch_hitter_advanced,
+    fetch_pitcher_advanced,
+)
 from playball.data.savant import (
     format_savant_table,
     get_batter_pitch_profile,
@@ -29,6 +35,9 @@ def _player_note(name: str, role: str, expected_row, detail: pd.DataFrame) -> st
         return f"{name} does not have enough current-season Statcast volume yet. Start with role, usage, and recent game context."
 
     gap = expected_row.get("luck_gap")
+    if pd.isna(gap):
+        return f"{name} does not have enough plate-appearance volume yet for a luck-gap read. Watch volume and contact quality first."
+
     if role == "Pitcher":
         if gap > 0.045:
             luck = "Results have been rougher than the contact profile suggests."
@@ -37,7 +46,7 @@ def _player_note(name: str, role: str, expected_row, detail: pd.DataFrame) -> st
         else:
             luck = "Actual and expected contact quality are mostly aligned."
         if not detail.empty:
-            best = detail.sort_values("xwoba", ascending=True).iloc[0]
+            best = detail.sort_values("xwoba", ascending=True, na_position="last").iloc[0]
             primary = detail.iloc[0]
             return f"{luck} Primary pitch: {primary['pitch_name']}. Best expected-result pitch: {best['pitch_name']}."
         return luck
@@ -49,8 +58,8 @@ def _player_note(name: str, role: str, expected_row, detail: pd.DataFrame) -> st
     else:
         luck = "The surface line and expected contact are mostly telling the same story."
     if not detail.empty:
-        best = detail.sort_values("xwoba", ascending=False).iloc[0]
-        trouble = detail.sort_values("whiff_percent", ascending=False).iloc[0]
+        best = detail.sort_values("xwoba", ascending=False, na_position="last").iloc[0]
+        trouble = detail.sort_values("whiff_percent", ascending=False, na_position="last").iloc[0]
         return f"{luck} Best pitch-type results: {best['pitch_name']}. Biggest swing-miss area so far: {trouble['pitch_name']}."
     return luck
 
@@ -74,6 +83,41 @@ def _contact_metrics(row) -> None:
     cols[4].metric("Whiff", _fmt_pct(row.get("whiff_percent")))
 
 
+def _fmt_or_dash(value, fmt: str) -> str:
+    if value is None:
+        return "-"
+    try:
+        if pd.isna(value):
+            return "-"
+    except (TypeError, ValueError):
+        pass
+    try:
+        return format(value, fmt)
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _advanced_metrics(adv: dict, role: str) -> None:
+    if role == "Pitcher":
+        cols = st.columns(6)
+        cols[0].metric("ERA", _fmt_or_dash(adv.get("era"), ".2f"))
+        cols[1].metric("FIP", _fmt_or_dash(adv.get("fip"), ".2f"))
+        cols[2].metric("WHIP", _fmt_or_dash(adv.get("whip"), ".2f"))
+        cols[3].metric("K%", _fmt_or_dash(adv.get("k_pct"), ".1f") + ("%" if adv.get("k_pct") is not None else ""))
+        cols[4].metric("BB%", _fmt_or_dash(adv.get("bb_pct"), ".1f") + ("%" if adv.get("bb_pct") is not None else ""))
+        cols[5].metric("K-BB%", _fmt_or_dash(adv.get("kbb_pct"), ".1f") + ("%" if adv.get("kbb_pct") is not None else ""))
+        st.caption(f"IP {adv.get('innings_pitched', '-')} · TBF {adv.get('batters_faced', '-')} · FIP constant {adv.get('fip_constant', '-')}")
+    else:
+        cols = st.columns(6)
+        cols[0].metric("AVG", _fmt_or_dash(adv.get("avg"), ".3f").lstrip("0") if adv.get("avg") is not None else "-")
+        cols[1].metric("OBP", _fmt_or_dash(adv.get("obp"), ".3f").lstrip("0") if adv.get("obp") is not None else "-")
+        cols[2].metric("SLG", _fmt_or_dash(adv.get("slg"), ".3f").lstrip("0") if adv.get("slg") is not None else "-")
+        cols[3].metric("ISO", _fmt_or_dash(adv.get("iso"), ".3f").lstrip("0") if adv.get("iso") is not None else "-")
+        cols[4].metric("BB%", _fmt_or_dash(adv.get("bb_pct"), ".1f") + ("%" if adv.get("bb_pct") is not None else ""))
+        cols[5].metric("K%", _fmt_or_dash(adv.get("k_pct"), ".1f") + ("%" if adv.get("k_pct") is not None else ""))
+        st.caption(f"PA {adv.get('plate_appearances', '-')} · HR {adv.get('home_runs', '-')} · OPS {_fmt_or_dash(adv.get('ops'), '.3f')}")
+
+
 def _select_existing(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     return frame[[col for col in columns if col in frame.columns]]
 
@@ -88,8 +132,11 @@ def render_player_detail(roster: pd.DataFrame) -> None:
 
     names = roster["name"].dropna().tolist()
     default_index = names.index("Bobby Witt Jr.") if "Bobby Witt Jr." in names else 0
-    selected = st.selectbox("Player", names, index=default_index)
+    selected = st.selectbox("Player", names, index=default_index, key="player_detail_player")
     player = roster[roster["name"] == selected].iloc[0]
+    if pd.isna(player["player_id"]):
+        st.warning("Player ID unavailable for the selected player.")
+        return
     player_id = int(player["player_id"])
     role = player["role"]
 
@@ -114,7 +161,18 @@ def render_player_detail(roster: pd.DataFrame) -> None:
         _expected_metrics(expected)
         _contact_metrics(expected)
 
-    st.markdown(f"<div class='watch-note'>{_player_note(selected, role, expected, detail)}</div>", unsafe_allow_html=True)
+    st.markdown("#### Season Box (MLB API + computed)")
+    try:
+        adv = fetch_pitcher_advanced(player_id) if role == "Pitcher" else fetch_hitter_advanced(player_id)
+    except Exception as exc:
+        adv = None
+        st.caption(f"Season box unavailable: {exc}")
+    if adv:
+        _advanced_metrics(adv, role)
+    else:
+        st.caption("No season totals from MLB Stats API yet.")
+
+    st.markdown(f"<div class='watch-note'>{html.escape(_player_note(selected, role, expected, detail))}</div>", unsafe_allow_html=True)
 
     if detail.empty:
         return

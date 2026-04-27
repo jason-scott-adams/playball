@@ -11,6 +11,7 @@ import streamlit as st
 BASE_URL = "https://statsapi.mlb.com/api/v1"
 LIVE_URL = "https://statsapi.mlb.com/api/v1.1"
 TEAM_ID_ROYALS = 118
+USER_AGENT = "playball/0.2 (+https://github.com/jason-scott-adams/playball)"
 DIVISION_NAMES = {
     200: "AL West",
     201: "AL East",
@@ -26,7 +27,7 @@ class MlbDataError(RuntimeError):
 
 
 def _get_json(url: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    response = requests.get(url, params=params, timeout=20)
+    response = requests.get(url, params=params, timeout=20, headers={"User-Agent": USER_AGENT})
     response.raise_for_status()
     return response.json()
 
@@ -55,8 +56,9 @@ def get_live_feed(game_pk: int) -> Dict[str, Any]:
 
 
 @st.cache_data(ttl=60 * 60)
-def get_active_roster(team_id: int = TEAM_ID_ROYALS) -> pd.DataFrame:
-    data = _get_json(f"{BASE_URL}/teams/{team_id}/roster", {"rosterType": "active", "season": date.today().year})
+def get_active_roster(team_id: int = TEAM_ID_ROYALS, season: Optional[int] = None) -> pd.DataFrame:
+    season = season or date.today().year
+    data = _get_json(f"{BASE_URL}/teams/{team_id}/roster", {"rosterType": "active", "season": season})
     rows: List[Dict[str, Any]] = []
     for item in data.get("roster", []):
         person = item.get("person", {})
@@ -75,12 +77,13 @@ def get_active_roster(team_id: int = TEAM_ID_ROYALS) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=10 * 60)
-def get_leaders(stat_group: str, categories: List[str], limit: int = 10) -> Dict[str, pd.DataFrame]:
+def get_leaders(stat_group: str, categories: List[str], limit: int = 10, season: Optional[int] = None) -> Dict[str, pd.DataFrame]:
+    season = season or date.today().year
     data = _get_json(
         f"{BASE_URL}/stats/leaders",
         {
             "leaderCategories": ",".join(categories),
-            "season": date.today().year,
+            "season": season,
             "sportId": 1,
             "leaderGameTypes": "R",
             "statGroup": stat_group,

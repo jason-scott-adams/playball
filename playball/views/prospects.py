@@ -4,6 +4,10 @@ import pandas as pd
 import streamlit as st
 
 
+# Last hand-curated update. Bump this whenever the PROSPECTS list below is reviewed.
+PROSPECTS_LAST_UPDATED = "2026-04-26"
+
+
 PROSPECTS = [
     {
         "rank": 1,
@@ -53,7 +57,11 @@ PROSPECTS = [
 def render_prospects(roster: pd.DataFrame) -> None:
     st.subheader("Prospect Radar")
     st.markdown(
-        "Prospects are part stats, part scouting, part timing. This view starts with known 2026 names and should become a tracked watchlist."
+        "**Editorial — author's hand-curated notes.** "
+        f"Last reviewed **{PROSPECTS_LAST_UPDATED}**. "
+        "This is not data-backed prospect tracking — there is no clean public MiLB Statcast at every level "
+        "and most scouting grades are paywalled. Treat this list as one fan's mental map of names to know, "
+        "not as analysis. Bump `PROSPECTS_LAST_UPDATED` in code when you refresh the list."
     )
     frame = pd.DataFrame(PROSPECTS)
     st.dataframe(frame, width="stretch", hide_index=True)

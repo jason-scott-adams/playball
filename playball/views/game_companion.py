@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import html
+from typing import Any, Dict, Optional
+
 import pandas as pd
 import streamlit as st
 
@@ -9,7 +12,7 @@ from playball.lib.charts import pitch_mix_chart
 from playball.lib.scoreboard import render_scorebug_html
 
 
-def render_game_companion(game):
+def render_game_companion(game: Optional[Dict[str, Any]]) -> None:
     if not game:
         st.info("No Royals game found for this date.")
         return
@@ -34,7 +37,10 @@ def render_game_companion(game):
     cols[3].metric("Inning", f"{summary['half']} {summary['inning']}".strip() or "-")
     cols[4].metric("Venue", summary["venue"] or "-")
 
-    st.markdown(f"<div class='watch-note'>{watch_note(summary, matchup)}</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div class='watch-note'>{html.escape(watch_note(summary, matchup))}</div>",
+        unsafe_allow_html=True,
+    )
 
     left, right = st.columns([1.05, 1])
     with left:
@@ -110,7 +116,7 @@ def render_game_companion(game):
                     fig.update_layout(height=320, margin=dict(l=10, r=10, t=45, b=10))
                     st.plotly_chart(fig, use_container_width=True)
                 top = arsenal.iloc[0]
-                best = arsenal.sort_values("xwoba", ascending=True).iloc[0]
+                best = arsenal.sort_values("xwoba", ascending=True, na_position="last").iloc[0]
                 with batter_col:
                     if matchup.get("batter_id"):
                         batter_profile = get_batter_pitch_profile(int(matchup["batter_id"]))
@@ -132,14 +138,20 @@ def render_game_companion(game):
                             same_pitch = batter_profile[batter_profile["pitch_type"] == top["pitch_type"]]
                             if not same_pitch.empty:
                                 row = same_pitch.iloc[0]
-                                st.caption(f"Against {top['pitch_name']}: {row['xwoba']:.3f} xwOBA, {row['whiff_percent']:.1f}% whiff.")
+                                xwoba_str = f"{row['xwoba']:.3f}" if not pd.isna(row.get("xwoba")) else "—"
+                                whiff_str = f"{row['whiff_percent']:.1f}%" if not pd.isna(row.get("whiff_percent")) else "—%"
+                                st.caption(f"Against {top['pitch_name']}: {xwoba_str} xwOBA, {whiff_str} whiff.")
                     else:
                         st.caption("Batter profile appears when the live feed exposes a batter id.")
+                top_usage = f"{top['pitch_percent']:.1f}%" if not pd.isna(top.get("pitch_percent")) else "—%"
+                best_xwoba = f"{best['xwoba']:.3f}" if not pd.isna(best.get("xwoba")) else "—"
                 st.markdown(
-                    f"<div class='watch-note'>{matchup['pitcher']} leans most on the {top['pitch_name']} "
-                    f"({top['pitch_percent']:.1f}% usage). Best expected-result pitch so far: "
-                    f"{best['pitch_name']} at {best['xwoba']:.3f} xwOBA. "
-                    f"Now watch whether {matchup['batter']} makes him move to the second plan.</div>",
+                    "<div class='watch-note'>"
+                    f"{html.escape(str(matchup['pitcher']))} leans most on the {html.escape(str(top['pitch_name']))} "
+                    f"({top_usage} usage). Best expected-result pitch so far: "
+                    f"{html.escape(str(best['pitch_name']))} at {best_xwoba} xwOBA. "
+                    f"Now watch whether {html.escape(str(matchup['batter']))} makes him move to the second plan."
+                    "</div>",
                     unsafe_allow_html=True,
                 )
         except Exception as exc:
